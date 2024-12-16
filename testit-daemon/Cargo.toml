@@ -1,0 +1,17 @@
+[package]
+name = "testit-daemon"
+version = "0.0.1"
+edition = "2021"
+description = "An application for testing apis."
+license = "Apache 2.0"
+repository = "https://github.com/kjetilfjellheim/testit"
+readme = "README.md"
+keywords = ["monitoring", "agent", "health", "system"]
+authors = ["Kjetil Fjellheim <kjetil@forgottendonkey.net>"]
+categories = ["testing", "api"]
+
+[dependencies]
+testit-lib = { path = "../testit-lib" }
+
+[profile.release]
+lto = true

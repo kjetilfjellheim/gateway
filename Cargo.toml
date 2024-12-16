@@ -1,0 +1,10 @@
+[workspace]
+resolver = "2"
+
+members = [ 
+    "testit-lib",
+    "testit-daemon"
+]
+
+[profile.release]
+lto = true
