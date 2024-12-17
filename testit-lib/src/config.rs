@@ -259,8 +259,8 @@ pub struct MockResponseConfiguration {
     pub status: u16,
     // The headers to return when the mock is called.
     pub headers: HashMap<String, String>,
-    // Time to wait before returning the response.
-    pub delay: u32,
+    // Time to wait in milliseconds before returning the response.
+    pub delay: u64,
 }
 
 impl MockResponseConfiguration {
@@ -278,7 +278,7 @@ impl MockResponseConfiguration {
         response: String,
         status: u16,
         headers: HashMap<String, String>,
-        delay: u32,
+        delay: u64,
     ) -> Self {
         MockResponseConfiguration {
             response,
