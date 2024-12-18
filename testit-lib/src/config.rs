@@ -254,7 +254,7 @@ impl EndpointConfiguration {
 #[serde(rename_all = "camelCase")]
 pub struct MockResponseConfiguration {
     // The response to return when the mock is called.
-    pub response: String,
+    pub response: Option<String>,
     // The status code to return when the mock is called.
     pub status: u16,
     // The headers to return when the mock is called.
@@ -275,7 +275,7 @@ impl MockResponseConfiguration {
      * @return The mock response configuration.
      */
     pub fn new(
-        response: String,
+        response: Option<String>,
         status: u16,
         headers: HashMap<String, String>,
         delay: u64,
@@ -336,7 +336,7 @@ mod test {
                         "GET".to_string(),
                         None,
                         Some(MockResponseConfiguration::new(
-                            "Test Response".to_string(),
+                            Some("Test Response".to_string()),
                             200,
                             HashMap::new(),
                             0,
@@ -367,7 +367,7 @@ mod test {
                 .as_ref()
                 .unwrap()
                 .response,
-            "Test Response"
+            Some("Test Response".to_string())
         );
         assert_eq!(
             configuration.tests[0].servers[0].endpoints[0]
@@ -423,7 +423,7 @@ mod test {
                         "GET".to_string(),
                         None,
                         Some(MockResponseConfiguration::new(
-                            "Test Response".to_string(),
+                            Some("Test Response".to_string()),
                             200,
                             HashMap::new(),
                             0,
@@ -457,7 +457,7 @@ mod test {
                         "GET".to_string(),
                         None,
                         Some(MockResponseConfiguration::new(
-                            "Test Response".to_string(),
+                            Some("Test Response".to_string()),
                             200,
                             HashMap::new(),
                             0,
