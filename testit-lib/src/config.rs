@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
 
+use crate::error::ApplicationError;
+
 /**
  * The configuration for the application.
  */
@@ -17,9 +19,6 @@ pub struct AppConfiguration {
     pub description: String,
     // The test configurations.
     pub tests: Vec<TestConfiguration>,
-    // The endpoint for closing the servers.
-    #[serde(default = "default_close_endpoint", alias = "closeEndpoint")]
-    pub close_endpoint: String,
 }
 
 impl AppConfiguration {
@@ -36,42 +35,28 @@ impl AppConfiguration {
         name: String,
         description: String,
         tests: Vec<TestConfiguration>,
-        close_endpoint: String,
     ) -> Self {
         AppConfiguration {
             name,
             description,
             tests,
-            close_endpoint,
         }
-    }
-
-    /**
-     * Add a test to the configuration.
-     *
-     * @param test The test configuration to add.
-     */
-    fn add_test(&mut self, test: TestConfiguration) {
-        self.tests.push(test);
-    }
-
-    /**
-     * Remove a test from the configuration.
-     *
-     * @param test_id The ID of the test to remove.
-     */
-    fn remove_test(&mut self, test_id: &str) {
-        self.tests.retain(|test| test.id != test_id);
     }
 
     /**
      * Save the configuration to a file.
      *
      * @param path The path to save the configuration to.
+     * 
+     * @return Ok if the configuration was saved successfully.
+     * 
+     * # Errors
+     * @return An error if the configuration could not be saved.
      */
-    fn save(&self, path: &str) {
-        let serialized = serde_json::to_string_pretty(&self).unwrap();
-        std::fs::write(path, serialized).unwrap();
+    fn save(&self, path: &str) -> Result<(), ApplicationError> {
+        let string_data = serde_json::to_string_pretty(&self).map_err(|err| ApplicationError::FileError(err.to_string()))?;
+        std::fs::write(path, string_data).map_err(|err| ApplicationError::FileError(err.to_string()))?;
+        Ok(())
     }
 
     /**
@@ -80,15 +65,15 @@ impl AppConfiguration {
      * @param path The path to load the configuration from.
      *
      * @return The configuration.
+     * 
+     * # Errors
+     * @return An error if the configuration could not be loaded.
      */
-    pub fn load(path: &str) -> Self {
-        let serialized = std::fs::read_to_string(path).unwrap();
-        serde_json::from_str(&serialized).unwrap()
+    pub fn load(path: &str) -> Result<Self, ApplicationError> {
+        let string_data = std::fs::read_to_string(path).map_err(|err| ApplicationError::FileError(err.to_string()))?;
+        serde_json::from_str(&string_data).map_err(|err| ApplicationError::FileError(err.to_string()))
     }
-}
 
-fn default_close_endpoint() -> String {
-    "/".to_string()
 }
 
 /**
@@ -345,7 +330,6 @@ mod test {
                     )],
                 )],
             )],
-            "/close".to_string(),
         );
 
         assert_eq!(configuration.name, "Test Configuration");
@@ -432,7 +416,6 @@ mod test {
                     )],
                 )],
             )],
-            "/close".to_string(),
         );
 
         let serialized = serde_json::to_string(&configuration).unwrap();
@@ -466,12 +449,11 @@ mod test {
                     )],
                 )],
             )],
-            "/close".to_string(),
         );
 
         let path = "/tmp/test.json";
         configuration.save(path);
-        let loaded = AppConfiguration::load(path);
+        let loaded = AppConfiguration::load(path).unwrap();
 
         assert_eq!(configuration, loaded);
     }

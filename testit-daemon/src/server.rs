@@ -1,28 +1,25 @@
-use std::{borrow::BorrowMut, cell::RefCell, future::IntoFuture, net::SocketAddr, os::unix::thread, sync::Arc};
+use std::sync::Arc;
 
-use actix_web::{dev::{Response, Server}, http::StatusCode, web, App, HttpRequest, HttpResponse, HttpServer};
-use tokio::sync::{Mutex, RwLock};
+use actix_web::{http::StatusCode, web, App, HttpRequest, HttpResponse, HttpServer};
+use testit_lib::{config::{EndpointConfiguration, MockResponseConfiguration, ServerConfiguration, TestConfiguration}, error::ApplicationError};
+use tokio::sync::RwLock;
 use regex::Regex;
-
-use crate::config::{ServerConfiguration, TestConfiguration};
 
 /**
  * The ServerSetup struct is used to start and stop servers.
- * 
- * This implementation might contain a memory leak as I need to identify what happens when the server handles are stopped.
  */
 pub struct ServerSetup {
     servers: Arc<RwLock<Vec<AppServer>>>,
 }
 
 impl ServerSetup {
-    fn new() -> Self {
+    pub fn new() -> Self {
         ServerSetup {
             servers: Arc::new(RwLock::new(vec![]))
         }
     }
 
-    async fn setup_test(&mut self, test_configuration: TestConfiguration) {
+    pub async fn setup_test(&mut self, test_configuration: &TestConfiguration) {
         let servers: Vec<AppServer> = test_configuration
             .servers
             .iter()
@@ -31,7 +28,7 @@ impl ServerSetup {
         self.servers.write().await.extend(servers);
     }
 
-    async fn start_servers(&mut self) {
+    pub async fn start_servers(&mut self) {
         let mut handles = vec![];
         for server in self.servers.write().await.iter_mut() {
             handles.push(server.start_server().await);
@@ -51,61 +48,126 @@ impl AppServer {
         }
     }
 
-    async fn start_server(&mut self) {
+    async fn start_server(&mut self) -> Result<(), ApplicationError> {
         let appstate = web::Data::new(self.server_configuration.clone());
         let server = HttpServer::new(move || {
             App::new()
                 .app_data(appstate.clone())
-                .default_service(web::to(Self::request_handler))
+                .default_service(web::to(request_handler))
         })
-        .bind(("127.0.0.1", self.server_configuration.port)).unwrap()
-        .workers(5)
-        .run();
-        tokio::spawn(async move {
-            server.await;
-        });
-    }
-
-    async fn request_handler(server_configuration: web::Data<ServerConfiguration>, req: HttpRequest) -> HttpResponse {
-        for endpoint in server_configuration.endpoints.iter() {
-            if is_valid_endpoint(&req, &endpoint) {
-                return handle_endpoint(&endpoint);
+        .bind(("127.0.0.1", self.server_configuration.port)).map_err(|err| ApplicationError::ServerStartUpError(err.to_string()));
+        match server {
+            Err(err) => { return Err(err) },
+            Ok(server) => {
+                let server = server.workers(5).run();
+                tokio::spawn(async move {
+                    match server.await {
+                        Ok(_) => {},
+                        Err(err) => eprintln!("{}", err),
+                    }
+                });
             }
         }
-        HttpResponse::NotImplemented().body("Not implemented")
-    }    
+        Ok(())
+    }  
 
 }
 
-fn is_valid_endpoint(request: &HttpRequest, endpoint: &crate::config::EndpointConfiguration) -> bool {
-    let regexp = Regex::new(&endpoint.endpoint).unwrap();
-    regexp.is_match(request.uri().path()) && request.method().as_str() == endpoint.method.as_str()
+/**
+ * Handle the request.
+ * 
+ * # Arguments
+ * @param server_configuration: The server configuration.
+ * @param req: The request.
+ * 
+ * # Returns
+ * @return The response.
+ */
+async fn request_handler(server_configuration: web::Data<ServerConfiguration>, req: HttpRequest) -> HttpResponse {
+    for endpoint in server_configuration.endpoints.iter() {
+        match is_valid_endpoint(&req, endpoint) {
+            Ok(true) => { 
+                match handle_endpoint(endpoint) {
+                    Ok(response) => return response,
+                    Err(err) => {   
+                        eprintln!("{}", err);    
+                        return HttpResponse::NotImplemented().body("Not implemented"); 
+                    }
+                }                
+            },
+            Ok(false) => continue,
+            Err(err) => return HttpResponse::ServiceUnavailable().body(err.to_string())
+        }    
+    }
+    HttpResponse::NotImplemented().body("Not implemented")
 }
 
-fn handle_endpoint(endpoint: &crate::config::EndpointConfiguration) -> HttpResponse {
+/**
+ * Check if the request is a valid endpoint.
+ * 
+ * # Arguments
+ * @param request: The request.
+ * @param endpoint: The endpoint configuration.
+ * 
+ * # Returns
+ * @return True if the request is a valid endpoint.
+ * 
+ * # Errors
+ * @return An error if the endpoint is invalid.
+ */
+fn is_valid_endpoint(request: &HttpRequest, endpoint: &EndpointConfiguration) -> Result<bool, ApplicationError> {
+    let regexp = Regex::new(&endpoint.endpoint).map_err(|err| ApplicationError::ConfigurationError(err.to_string()))?;
+    Ok(regexp.is_match(request.uri().path()) && request.method().as_str() == endpoint.method.as_str())
+}
+
+/**
+ * Handle the endpoint.
+ * 
+ * # Arguments
+ * @param endpoint: The endpoint configuration.
+ * 
+ * # Returns
+ * @return The response.
+ * 
+ * # Errors
+ * @return An error if the status code is invalid.
+ */
+fn handle_endpoint(endpoint: &EndpointConfiguration) -> Result<HttpResponse, ApplicationError> {
     if let Some(mock_response) = &endpoint.mock_response {
         std::thread::sleep(std::time::Duration::from_millis(mock_response.delay));
         return generate_mock_response(mock_response);
     } 
-    HttpResponse::NotImplemented().body("Not implemented")
+    Ok(HttpResponse::NotImplemented().body("Not implemented"))
 }
 
-fn generate_mock_response(mock_response: &crate::config::MockResponseConfiguration) -> HttpResponse {
-    let mut response_builder: actix_web::HttpResponseBuilder = HttpResponse::build(StatusCode::from_u16(mock_response.status).unwrap());
+/**
+ * Generate a mock response.
+ * 
+ * # Arguments
+ * @param mock_response: The mock response configuration.
+ * 
+ * # Returns
+ * @return The generated response.
+ * 
+ * # Errors
+ * @return An error if the status code is invalid.
+ */
+fn generate_mock_response(mock_response: &MockResponseConfiguration) -> Result<HttpResponse, ApplicationError> {
+    let mut response_builder: actix_web::HttpResponseBuilder = HttpResponse::build(StatusCode::from_u16(mock_response.status).map_err(|err| ApplicationError::ConfigurationError(err.to_string()))?);
     for (key, value) in mock_response.headers.iter() {
         response_builder.append_header((key.as_str(), value.as_str()));
     }
     if let Some(response) = &mock_response.response {
-        return response_builder.body(response.clone());
+        return Ok(response_builder.body(response.clone()));
     }
-    response_builder.finish()
+    Ok(response_builder.finish())
 }
 
+#[cfg(test)]
 mod test {
     use std::{collections::HashMap, thread, time::Duration};
 
     use super::*;
-    use crate::config::{EndpointConfiguration, MockResponseConfiguration, TestConfiguration};
 
     /**
      * Verifying that the server can be started.
@@ -133,7 +195,7 @@ mod test {
             id: "test".to_string(),
         };
         let mut server_setup = ServerSetup::new();
-        server_setup.setup_test(test_configuration).await;
+        server_setup.setup_test(&test_configuration).await;
         server_setup.start_servers().await;
         thread::sleep(Duration::from_secs(1));
         let res = reqwest::get("http://localhost:8080").await.unwrap();
@@ -155,7 +217,7 @@ mod test {
             ]),
         ]);
         let mut server_setup = ServerSetup::new();
-        server_setup.setup_test(test_configuration).await;
+        server_setup.setup_test(&test_configuration).await;
         server_setup.start_servers().await;
         thread::sleep(Duration::from_secs(1));
         let res = reqwest::get("http://localhost:8082/test").await.unwrap();

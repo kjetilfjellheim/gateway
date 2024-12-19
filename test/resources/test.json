@@ -1,0 +1,35 @@
+{
+  "name": "Test Configuration",
+  "description": "Test Configuration Description",
+  "tests": [
+    {
+      "id": "bb94eec1-bb45-4122-adf7-a69132509cfe",
+      "name": "Test",
+      "description": "Test Description",
+      "servers": [
+        {
+          "id": "dc179be0-3bde-4887-9e43-74164efc708f",
+          "name": "Server",
+          "port": 8080,
+          "endpoints": [
+            {
+              "id": "0a583546-5d23-4fa1-a053-543df7b6fce5",
+              "endpoint": "/test",
+              "method": "GET",
+              "soapAction": null,
+              "mockResponse": {
+                "response": "Test Response",
+                "status": 200,
+                "headers": {},
+                "delay": 0
+              },
+              "route": {
+                "endpoint": "/test"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+}
