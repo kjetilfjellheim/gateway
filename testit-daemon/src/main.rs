@@ -105,7 +105,7 @@ async fn start_daemon(id: &Option<String>, config: &AppConfiguration) -> Result<
     let test = get_test(id, config)?;
     let mut server_setup = ServerSetup::new();
     server_setup.setup_test(test).await;
-    server_setup.start_servers().await;
+    server_setup.start_servers().await.map_err(|err| ApplicationError::ServerStartUpError(err.to_string()))?;
     Ok(())
 }
 

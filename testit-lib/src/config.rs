@@ -110,23 +110,39 @@ impl TestConfiguration {
             servers,
         }
     }
+}
 
-    /**
-     * Add a server to the test.
-     *
-     * @param server The server configuration to add.
-     */
-    fn add_server(&mut self, server: ServerConfiguration) {
-        self.servers.push(server);
-    }
+/**
+ * Configuration for an https server.
+ */
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct HttpsConfiguration {
+    // The path to the certificate.
+    pub server_certificate: String,
+    // The path to the private key.
+    pub private_key: String,
+    // The https port
+    pub https_port: u16,
 
+}
+
+impl HttpsConfiguration {
     /**
-     * Remove a server from the test.
+     * Create a new https configuration.
      *
-     * @param server_id The ID of the server to remove.
+     * @param certificate The path to the certificate.
+     * @param private_key The path to the private key.
+     * @param https_port The https port.
+     *
+     * @return The https configuration.
      */
-    fn remove_server(&mut self, server_id: &str) {
-        self.servers.retain(|server| server.id != server_id);
+    pub fn new(server_certificate: String, private_key: String, https_port: u16) -> Self {
+        HttpsConfiguration {
+            server_certificate,
+            private_key,
+            https_port,
+        }
     }
 }
 
@@ -140,10 +156,12 @@ pub struct ServerConfiguration {
     pub id: String,
     // The name of the server.
     pub name: String,
-    // The port to run the server on.
-    pub port: u16,
+    // The port to run the server on.    
+    pub http_port: Option<u16>,
     // The endpoints to configure.
     pub endpoints: Vec<EndpointConfiguration>,
+    // The https configuration.
+    pub https_config: Option<HttpsConfiguration>,
 }
 
 impl ServerConfiguration {
@@ -156,32 +174,16 @@ impl ServerConfiguration {
      *
      * @return The server configuration.
      */
-    pub fn new(name: String, port: u16, endpoints: Vec<EndpointConfiguration>) -> Self {
+    pub fn new(name: String, http_port: Option<u16>, endpoints: Vec<EndpointConfiguration>, https_config: Option<HttpsConfiguration>) -> Self {
         ServerConfiguration {
             id: Uuid::new_v4().to_string(),
             name,
-            port,
-            endpoints,
+            http_port,
+            endpoints,            
+            https_config,
         }
     }
 
-    /**
-     * Add an endpoint to the server.
-     *
-     * @param endpoint The endpoint configuration to add.
-     */
-    fn add_endpoint(&mut self, endpoint: EndpointConfiguration) {
-        self.endpoints.push(endpoint);
-    }
-
-    /**
-     * Remove an endpoint from the server.
-     *
-     * @param endpoint_id The ID of the endpoint to remove.
-     */
-    fn remove_endpoint(&mut self, endpoint_id: &str) {
-        self.endpoints.retain(|endpoint| endpoint.id != endpoint_id);
-    }
 }
 
 /**
@@ -315,7 +317,7 @@ mod test {
                 "Test Description".to_string(),
                 vec![ServerConfiguration::new(
                     "Server".to_string(),
-                    8080,
+                    Some(8080),
                     vec![EndpointConfiguration::new(
                         "/test".to_string(),
                         "GET".to_string(),
@@ -328,6 +330,7 @@ mod test {
                         )),
                         Some(RouteConfiguration::new("/test".to_string())),
                     )],
+                    None
                 )],
             )],
         );
@@ -339,7 +342,7 @@ mod test {
         assert_eq!(configuration.tests[0].description, "Test Description");
         assert_eq!(configuration.tests[0].servers.len(), 1);
         assert_eq!(configuration.tests[0].servers[0].name, "Server");
-        assert_eq!(configuration.tests[0].servers[0].port, 8080);
+        assert_eq!(configuration.tests[0].servers[0].http_port, Some(8080));
         assert_eq!(configuration.tests[0].servers[0].endpoints.len(), 1);
         assert_eq!(
             configuration.tests[0].servers[0].endpoints[0].endpoint,
@@ -401,7 +404,7 @@ mod test {
                 "Test Description".to_string(),
                 vec![ServerConfiguration::new(
                     "Server".to_string(),
-                    8080,
+                    Some(8080),
                     vec![EndpointConfiguration::new(
                         "/test".to_string(),
                         "GET".to_string(),
@@ -414,6 +417,7 @@ mod test {
                         )),
                         Some(RouteConfiguration::new("/test".to_string())),
                     )],
+                    None
                 )],
             )],
         );
@@ -434,7 +438,7 @@ mod test {
                 "Test Description".to_string(),
                 vec![ServerConfiguration::new(
                     "Server".to_string(),
-                    8080,
+                    Some(8080),
                     vec![EndpointConfiguration::new(
                         "/test".to_string(),
                         "GET".to_string(),
@@ -447,12 +451,13 @@ mod test {
                         )),
                         Some(RouteConfiguration::new("/test".to_string())),
                     )],
+                    None
                 )],
             )],
         );
 
         let path = "/tmp/test.json";
-        configuration.save(path);
+        let _ = configuration.save(path);
         let loaded = AppConfiguration::load(path).unwrap();
 
         assert_eq!(configuration, loaded);
